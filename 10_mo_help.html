@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adatbázis oracle</title>
+</head>
+<body>
+	T1,T2,T3 soros ütemezés:                        T2,T1,T3 soros ütemezés:
+	T1         T2         T3                        T1         T2         T3
+Read(X,t)                                                  Read(X,t)
+t:=t+100                                                   t:=t*2
+Write(X,t)                                                 Write(X,t)
+		   Read(X,t)                            Read(X,t)
+		   t:=t*2                               t:=t+100
+		   Write(X,t)                           Write(X,t)
+					  Read(X,t)                                       Read(X,t)
+					  t:=t+10                                         t:=t+10
+					  Write(X,t)                                      Write(X,t)
+							 410
+
+Egy ütemezés, amely nem soros                   A soros ütemezések száma: 3!
+	T1         T2         T3
+Read(X,t)                                       Az összes ütemezések száma:        9!/(3!*3!*3!)
+		   Read(X,t)
+t:=t+100                                        Ha k tranzakciónk van, egyenként n1,n2,…nk
+Write(X,t)                                      művelettel, akkor az ütemezések száma:
+					  Read(X,t)                 (n1+n2+…nk)!/(n1!*n2!...nk!)
+		   t:=t*2
+		   Write(X,t)
+					  t:=t+10
+					  Write(X,t)
+
+
+Feladat 9.2.1
+			 Soros                 Soros                              Sorbarendezhető
+	T1           T2                    T1           T2                    T1         T2
+Read(A,t)                                       Read(B,s)                        Read(B,s)
+t:=t+2                                          s:=s*2                           s:=s*2
+Write(A,t)                                      Write(B,s)                       Write(B,s)
+Read(B,t)                                       Read(A,s)             Read(A,t)
+t:=t*3                                          s:=s+3                t:=t+2
+Write(B,t)                                      Write(A,s)            Write(A,t)
+			 Read(B,s)             Read(A,t)                                     Read(A,s)
+			 s:=s*2                t:=t+2                                        s:=s+3
+			 Write(B,s)            Write(A,t)                                    Write(A,s)
+			 Read(A,s)             Read(B,t)                          Read(B,t)
+			 s:=s+3                t:=t*3                             t:=t*3
+			 Write(A,s)            Write(B,t)                         Write(B,t)
+A->A+5                             A->A+5                             A->A+5
+B->B*6                             B->B*6                             B->B*6
+
+Nem sorbarendezhető
+   T1        T2
+		 Read(B,s)
+		 s:=s*2
+		 Write(B,s)
+      Read(A,t)
+t:=t+2
+			 Read(A,s)
+Write(A,t)
+			 s:=s+3
+			 Write(A,s)
+Read(B,t)
+t:=t*3
+Write(B,t)
+A->A+3
+B->B*6
+
+Feladat 9.2.2
+
+T1                            T2
+R1(A); W1(A); R1(B); W1(B);   R2(B); W2(B); R2(A); W2(A);   T1T2-> 1
+
+T2                            T1
+R2(B); W2(B); R2(A); W2(A);   R1(A); W1(A); R1(B); W1(B);   T2T1-> 1
+
+Feladat 9.2.3
+
+T1                            T2
+R1(A); W1(A); R1(B); W1(B);   R2(A); W2(A); R2(B); W2(B);   T1T2->       4!/(2!*2!) = 6
+
+T2                            T1                            T2T1->       4!/(2!*2!) = 6
+R2(A); W2(A); R2(B); W2(B);   R1(A); W1(A); R1(B); W1(B);
+
+Ha T1-nek csak 3 művelete volna
+
+T1                            T2
+R1(A); W1(A); R1(B);          R2(A); W2(A); R2(B); W2(B);   T1T2-> 4!/3! = 4
+
+T2                            T1
+R2(A); W2(A); R2(B); W2(B);   R1(A); W1(A); R1(B);          T2T1-> 4!/(2!*2!) = 6
+
+Ha T1 és T2 a következő volna
+
+T1                            T2
+R1(A); W1(A); R1(B); W1(B);   R2(C); W2(C); R2(D); W2(D);   8!/(4!*4!)
+
+
+
+
+</body>
+</html>
