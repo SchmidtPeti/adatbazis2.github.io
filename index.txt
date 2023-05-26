@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=ű, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    8.2. Semmisségi (undo) naplózás
+1.	INPUT(X): Az X adatbáziselemet tartalmazó lemezblokk másolása a memória pufferbe.
+2.	READ(X,t): Az X adatbáziselem bemásolása a tranzakció t lokális változójába. Részletesebben, ha az X adatbáziselemet tartalmazó blokk nincs a memóriapufferben, akkor előbb végrehajtódik INPUT(X). Ezután kapja meg a t lokális változó az X értékét.
+3.	WRITE(X,t): A t lokális változó tartalma az X adatbáziselem memóriapufferbeli tartalmába másolódik. Részletesebben: ha az X adatbáziselemet tartalmazó blokk nincs a memóriapufferben, akkor előbb végrehajtódik INPUT(X). Ezután másolódik át a t lokális változó értéke a pufferbeli 
+4.	OUTPUT(X): Az X adatbáziselemet tartalmazó puffer kimásolása lemezre.
+Fontos figyelembe venni, hogy ezen parancsokat kiadó komponensek különbözőek. A READ és WRITE utasításokat a tranzakciók használják, az INPUT és OUTPUT utasításokat a pufferkezelő alkalmazza, ezen túl, ahogy már láttuk, bizonyos feltételek esetén az OUTPUT utasítást a naplózási rendszer is használja.
+Tevékenység	t	Mem A	Mem B	Lemez A	Lemez B
+READ(A,t)	18	18		18	18
+t := t*2	16	18		18	18
+WRITE(A,t)	16	16		18	18
+READ(B,t)	18	16	18	18	18
+t := t*2	16	16	18	18	18
+WRITE(B,t)	16	16	16	18	18
+OUTPUT(A)	16	16	16	16	18
+OUTPUT(B)	16	16	16	16	16
+8.2. ábra. A tranzakció lépései, és hatásuk a memóriában és a lemezen
+<hr>
+8.2. Semmisségi (undo) naplózás
+A napló nem más, mint a naplóbejegyzések (log records) sorozata, melyek mindegyike arról tartalmaz valami információt, hogy mit tett egy tranzakció. A tranzakciók tevékenysége nyomon követhető azáltal, hogy a tranzakció működésének hatása lépésenként naplózódik, ugyanez történik az összes tranzakcióval. 
+Ha rendszerhiba fordul elő, akkor a napló segítségével rekonstruálható, hogy a tranzakció mit tett a hiba fellépéséig.
+Áttekintjük azt is, hogy maga a napló hogyan keletkezik a memóriában és hogyan íródik ki a lemezre a „flush-log” (naplókiírás) művelettel. 
+Elkerülendő azt, hogy helyreállítás során a teljes naplót át kelljen vizsgálni, bemutatjuk az „ellenőrzőpont-képzés” (checkpointing) ötletét, mely lehetővé teszi, hogy a napló régi részét eldobjuk .
+A naplóblokkokat elsődlegesen a memóriában hozza létre a rendszer, és a pufferkezelő az adatbázisrendszer többi blokkjaihoz hasonlóan kezeli őket
+1.	<START T> : Ez a bejegyzés jelzi a T tranzakció (végrehajtásának) elkezdődését.
+2.	<COMMIT T>: A T tranzakció rendben befejeződött, az adatbázis elemein már semmi további módosítást nem kíván végrehajtani. A T által végrehajtott összes adatbázis-módosítás már megtörtént a lemezen. Minthogy azt nem tudjuk felügyelni, hogy a pufferkezelő mikor dönt a memóriablokkok lemezre másolásáról, így általában nem lehetünk biztosak abban, hogyha meglátjuk a <COMMIT T> naplóbejegyzést, akkor a változtatások a lemezen már megtörténtek. Ha ragaszkodunk ahhoz, hogy a módosítások már a lemezen is megtörténjenek, ezt az igényt a naplókezelőnek kell kikényszerítenie (mint például a semmisségi naplózás esetében).
+3.	<ABORT T>: A T tranzakció nem tudott sikeresen befejeződni. Ha a T tranzakció abortált, az általa tett változtatásokat nem kell a lemezre másolni. A tranzakció-kezelő feladata annak biztosítása, hogy az ilyen változtatások ne jelenjenek meg a lemezen, vagy ha volt valami hatásuk a lemezen, akkor az törlődjék. Az 
+A módosítási bejegyzés által leírt változtatás rendesen csak a memóriában történt meg, a lemezen nem; azaz a naplóbejegyzés a WRITE tevékenységre vonatkozik, nem pedig az OUTPUTra! (Emlékeztetünk a két művelet közötti különbségre, amit a 8.1.4. részben már láttunk.) 
+U1:	Ha a T tranzakció módosítja az X adatbáziselemet, akkor a <T,X,v> típusú naplóbejegyzést azt megelőzően kell lemezre kiírni, mielőtt X új értékét a lemezre írná a rendszer.
+U2:	Ha a tranzakció hibamentesen teljesen befejeződött, akkor a COMMIT naplóbejegyzést csak azt követően szabad lemezre írni, hogy a tranzakció által módosított összes adatbáziselem már lemezre íródott, de ezután viszont a lehető leggyorsabban.
+A naplóbejegyzések lemezre írásának kikényszerítésére a naplókezelőnek szüksége van a flush-log parancsra, mely felszólítja a pufferkezelőt az összes korábban még ki nem írt naplóblokkoknak a lemezre való kiírására, valamint azon pufferek kiírására, amelyek tartalma utolsó kiírásuk óta megváltozott. A FLUSH LOG parancsot a tevékenységek közé fogjuk iktatni.
+Lépés	Tevékenység	t	M-A	M-B	D-A	D-B	Napló
+11)							<START T>
+12)	READ(A,t)	18	18		18	18	
+13)	t := t*2	16	18		18	18	
+14)	WRITE(A,t)	16	16		18	18	<T,A,8>
+15)	READ(B,t)	18	16	18	18	18	
+16)	t := t*2	16	16	18	18	18	
+17)	WRITE(B,t)	16	16	16	18	18	<T,B,8>
+18)	FLUSH LOG						
+19)	OUTPUT(A)	16	16	16	16	18	
+10)	OUTPUT(B)	16	16	16	16	16	
+11)							<COMMIT T>
+12)	FLUSH LOG						
+8.3. ábra. Tevékenységek és naplóbejegyzéseik
+. A helyreállítás-kezelő (recovery manager) feladata – a napló használatával – az adatbázist konzisztens állapotba visszaállítani.
+Kényes helyzet áll elő, ha az A és B, két adatbáziselem, közös blokkban található. Akkor egyikük lemezre írása maga után vonja a másik kiírását is. Legrosszabb esetben az egyik adatbáziselem túl korai kiírásával megsértjük az U1 szabályt. Ez szükségessé tehet további előírásokat a tranzakcióra nézve azért, hogy a semmisségi naplózási módszer használható legyen. Például a 9.3. részben ismertetett zárolási módszert kell használnunk annak megelőzésére, nehogy két tranzakció, egyszerre, ugyanazon blokkot használja (e példában lemezblokkokat tekintünk adatbáziselemeknek). 
+Amennyiben feltételezzük, hogy a naplóban találunk <START T> bejegyzést, de nem találunk <COMMIT T> bejegyzést, akkor a T végrehajthatott az adatbázisban olyan módosításokat, melyek még a hiba fellépése előtt lemezre íródtak, amíg más változtatások a memória pufferekben sem történtek meg, vagy a memória pufferben megtörténtek ugyan, de a lemezre már nem íródtak ki. Ilyen esetben a T nem komplett tranzakció, és hatását semmissé kell tenni
+nagyon ügyelnünk kell arra, hogy milyen sorrendben állítjuk vissza X korábbi tartalmát. Ezért a helyreállítás-kezelő a naplót a végéről kezdi átvizsgálni (tehát az utoljára felírt bejegyzéstől a korábban felírtak irányába). Amint halad a napló átvizsgálásával, megjegyzi mindazon T tranzakciókat, melyekre vonatkozóan a naplóban <COMMIT T> vagy <ABORT T> bejegyzést talált. Amint halad visszafelé, amikor <T,X,v> bejegyzést lát, akkor:
+Miután a helyreállítás-kezelő végrehajtotta a fenti változtatásokat, minden, korábban abortált, nem teljes T tranzakcióra vonatkozóan <ABORT T> naplóbejegyzést ír a naplóba, és kiváltja annak naplófájlba való kiírását is (FLUSH LOG). Ekkor az adatbázis normál használata folytatódhat, új tranzakciók végrehajtása kezdődhet
+<START T1>
+<T1,A,5>
+<START T2>
+<T2,B,10>
+<T2,C,15>
+<T1,D,20>
+<COMMIT T1>
+<COMMIT T2>
+<CKPT>
+<START T3>
+<T3,E,25>
+<T3,F,30>
+8.4. ábra. Napló egyszerű ellenőrzőpont-képzéssel
+a COMMITot megelőző naplóbejegyzéseket törölhetnénk a naplóból, de ezt nem mindig tehetjük meg. Ennek oka az, hogy gyakran sok tranzakció működik egyszerre, ha a naplót egy tranzakció befejezése után csonkítanánk, esetleg elveszítenénk más, még aktív tranzakciókra vonatkozó bejegyzéseket, 
+8.5. példa: Tegyük fel, hogy a napló így kezdődik:
+<START T1>
+<T1,A,5>
+<START T2>
+<T2,B,10>
+A 8.2.4. részben bemutatott ellenőrzőpont-képzési technika problémája, hogy gyakorlatilag le kell állítani a rendszer működését (nem engedni új tranzakciók indítását) az ellenőrzőpont elkészültéig. Minthogy az aktív tranzakciók még hosszabb időt igényelhetnek a normális vagy abnormális befejeződésükig, így a felhasználó számára a rendszer leállítottnak tűnhet. Egy jóval bonyolultabb módszerrel, a működés közbeni ellenőrzőpont
+katasztrófa az ellenőrzőpont-képzés közben fordult elő. Ennek következtében T1, …, Tk tranzakciók nem fejeződtek be (legalábbis nem tudtuk a befejeződést regisztrálni) a hiba fellépéséig. Ekkor a be nem fejeződött tranzakciók közül a legkorábban kezdődött tranzakció indulásáig kell a naplóban visszakeresnünk
+<hr>
+8.3. Helyrehozó naplózás (redo logging)
+. A semmisségi naplózás potenciális problémája az, hogy csak azután tudjuk befejezni a tranzakciót, ha az összes adatbázis-módosításai már lemezre íródtak. 
+lemezre írásoknak a következő sorrendben kell megtörténniük:
+1.	Az adatbáziselemek módosítását leíró naplóbejegyzések lemezre írása.
+2.	A COMMIT naplóbejegyzés lemezre írása.
+3.	Az adatbáziselemek értékének tényleges cseréje a lemezen.
+Lépés	Tevékenység	t	M-A	M-B	D-A	D-B	Napló
+11)							<START T>
+12)	READ(A,t)	18	18		18	18	
+13)	t := t*2	16	18		18	18	
+14)	WRITE(A,t)	16	16		18	18	<T,A,16>
+15)	READ(B,t)	18	16	18	18	18	
+16)	t := t*2	16	16	18	18	18	
+17)	WRITE(B,t)	16	16	16	18	18	<T,B,16>
+18)							<COMMIT T>
+19)	FLUSH LOG						
+10)	OUTPUT(A)	16	16	16	16	18	
+11)	OUTPUT(B)	16	16	16	16	16	
+8.7. ábra. Tevékenységek és naplóbejegyzéseik helyrehozó naplózás használatakor
+a pufferkezelőnek nyilván kell tartania a piszkos puffereket, melyekben már végrehajtott, de lemezre még ki nem írt módosításokat tárol. Azt is tudnunk kell, mely tranzakciók mely puffereket módosították.
+Más oldalról viszont, be tudjuk fejezni az ellenőrzőpont-képzést az aktív tranzakciók (normális vagy abnormális) befejezésének kivárása nélkül, mert ők ekkor még amúgy sem engedélyezik lapjaik lemezre írását. A helyrehozó naplózásban a működés közbeni ellenőrzőpont-képzés a következőkből áll:
+1.	<START CKPT (T1, …, Tk)> naplóbejegyzés elkészítése és kiírása lemezre, ahol
+T1, …, Tk az összes éppen aktív (még be nem fejezett) tranzakció.
+2.	Az összes olyan adatbáziselem kiírása lemezre, melyeket olyan tranzakciók írtak pufferekbe, melyek a START CKPT naplóba írásakor már befejeződtek, de puffereik lemezre még nem kerültek.
+3.	<END CKPT> bejegyzés naplóba írása és a napló lemezre írása (FLUSH LOG).
+
+<START T1>
+<T1,A,5>
+<START T2>
+<COMMIT T1>
+<T2,B,10>
+<START CKPT (T2)>
+<T2,C,15>
+<START T3>
+<T3,D,20>
+<END CKPT>
+<COMMIT T2>
+<COMMIT T3>
+8.8. ábra. A helyrehozó naplózás naplója
+Tegyük fel először, hogy a katasztrófa előtt a naplóba feljegyzett utolsó ellenőrzőpont-bejegyzés <END CKPT>. Ekkor tudjuk, hogy az olyan értékek, melyeket olyan tranzakciók írtak, melyek a <START CKPT (T1, …, Tk)> naplóbejegyzés megtétele előtt befejeződtek, már biztosan lemezre kerültek, s így nem kell velük foglalkoznunk helyreállítandó ezen tranzakciók hatását. Foglalkoznunk kell viszont a Ti-k közé tartozó, valamint az ellenőrzőpont kialakításának megkezdése után induló tranzakciókkal, ezeknek lehetnek olyan adatbázis-módosításaik, melyek még nem kerültek lemezre, pedig a tranzakció már befejeződött. Ekkor olyan visszaállítást kell tennünk, amilyenről a 8.3.2. részben már szó volt, azzal a különbséggel, hogy figyelmünket azon tranzakciókra korlátozhatjuk, melyek az utolsó <START CKPT (T1, …, Tk)> naplóbejegyzésben a Ti-k között szerepelnek, vagy ezen naplóbejegyzést követően indultak el. A naplóban való keresés során a legkorábbi <START Ti> naplóbejegyzésig kell visszamennünk
+<hr>
+8.4. A semmisségi/helyrehozó (undo/redo) naplózás
+Láthattuk, hogy a naplózás két különböző megközelítése abban mutat eltérést, hogy a napló az adatbáziselemek értékének módosítása esetén a régi (módosítás előtti) vagy az új (módosítás utáni) érteket tartalmazza. Mindkét módszernek vannak bizonyos hátrányai is:
+•	A semmisségi (undo) naplózás alkalmazása megköveteli, hogy az adatokat a tranzakció befejezésekor nyomban lemezre írjuk, ezzel (esetleg jelentősen) növeljük a végrehajtandó lemezműveletek számát.
+•	Másik oldalról, a helyrehozó (redo) naplózás minden módosított adatbázisblokk pufferben tartását igényli, egészen a tranzakció rendes és teljes befejezéséig (commit), a napló kezelésével együtt (esetleg jelentősen) növeli a tranzakciók átlagos pufferigényét.
+•	Mindkét naplózási módszer az ellenőrzőpont képzése közben ellentétes igényeket támaszt a pufferek lemezre írása szempontjából, kivéve, ha az adatbáziselemek teljes blokkok vagy blokkok sokasága. Például, ha a puffer tartalmaz egy A adatbáziselemet, melyet egy rendesen és teljesen befejezett tranzakció módosított, és tartalmaz egy B adatbáziselemet is, melyet olyan tranzakció módosított, melyre vonatkozóan a COMMIT bejegyzés még nem került lemezre, akkor az R1 szabálynak megfelelően, a puffer lemezre másolását igényeljük A miatt, viszont tiltjuk ennek megtételét B miatt.
+Most a semmisségi/helyrehozó (undo/redo)-nak nevezett naplózást vizsgáljuk meg. Ez a módszer a tevékenységek elvégzési sorrendjének rugalmasságát növeli azáltal, hogy bővíti a naplózott információk körét.
+UR1:	Mielőtt az adatbázis bármely X elemének értékét – valamely T tranzakció által végzett módosítás miatt – a lemezen módosítanánk, ezt megelőzően a <T,X,v,w> módosítást leíró naplóbejegyzésnek lemezre kell kerülnie.
+
+Lépés	Tevékenység	t	M-A	M-B	D-A	D-B	Napló
+11)							<START T>
+12)	READ(A,t)	18	18		18	18	
+13)	t := t*2	16	18		18	18	
+14)	WRITE(A,t)	16	16		18	18	<T,A,8,16>
+15)	READ(B,t)	18	16	18	18	18	
+16)	t := t*2	16	16	18	18	18	
+17)	WRITE(B,t)	16	16	16	18	18	<T,B,8,16>
+18)	FLUSH LOG						
+19)	OUTPUT(A)	16	16	16	16	18	
+10)							<COMMIT T>
+11)	OUTPUT(B)	16	16	16	16	16	
+8.9. ábra. Tevékenységek és naplóbejegyzéseik lehetséges sorrendje semmisségi/helyrehozó naplózás használatakor
+UR2	A <COMMIT T> naplóbejegyzést nyomban lemezre kell írni, amint megjelenik a naplóban.
+Írjunk a naplóba <START CKPT (T1, …, Tk)> naplóbejegyzést, ahol T1, …, Tk-k az összes éppen aktív tranzakciók, majd írjuk a naplót lemezre.
+2.	Írjuk lemezre az összes piszkos puffert, tehát azokat, melyek egy vagy több módosított adatbáziselemet tartalmaznak. A helyrehozó naplózástól eltérően itt az összes piszkos puffert lemezre írjuk, nemcsak a már befejezett tranzakciók által módosítottakat.
+előttire, vagy pedig előbb visszaállítjuk, és utána a T által írottra rekonstruáljuk. E szituációban egyik út sem helyes, mert a végső adatbázis-állapot nem felel meg egyik – atomosnak elvárt – tranzakció hatásának sem.
+A gyakorlatban az adatbázisrendszereknek a módosítások naplózásánál többet kell tenniük. Biztosítaniuk kell, hogy ilyen szituációk ne fordulhassanak elő. A konkurencia kérdéseivel foglalkozó fejezetben vizsgáljuk azt is, mit jelent a T és U tranzakciók elkülönítése, amivel az ugyanazon X adatbáziselemen való kölcsönhatásuk előfordulása elkerülhető. A 10.1. részben kifejezetten az olyan helyzetek megelőzésével foglalkozunk, amikor a T tranzakció egy piszkos – más tranzakció által módosított, de még nem véglegesített – X adatbáziselemet használna.
+3.	Írjunk <END CKPT> naplóbejegyzést a naplóba, majd írjuk a naplót lemezre.
+<START T1>
+<T1,A,4,5>
+<START T2>
+<COMMIT T1>
+<T2,B,9,10>
+<START CKPT (T2)>
+<T2,C,14,15>
+<START T3>
+<T3,D,19,20>
+<END CKPT>
+<COMMIT T2>
+<COMMIT T3>
+8.10. ábra. A semmisségi/helyrehozó (undo/redo) naplózás naplója
+</body>
+</html>
