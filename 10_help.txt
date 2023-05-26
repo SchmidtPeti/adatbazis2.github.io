@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adatbázis oracle</title>
+</head>
+<body>
+    9.1. Soros és sorba rendezhető ütemezések
+A konkurenciavezérlés tanulmányozását azzal kezdjük, hogy megvizsgáljuk, a konkurensen végrehajtott tranzakciók milyen feltételekkel tudják megőrizni az adatbázis-állapot konzisztenciáját. Az alapfeltevésünk, amelyet „helyességi elv”-nek (correctness principle) neveztünk, a 8.1.3. részben az volt, hogy ha minden egyes tranzakciót elkülönítve hajtunk végre (anélkül, hogy más tranzakció konkurensen futna), akkor az adatbázist konzisztens állapotból konzisztens állapotba alakítjuk. A gyakorlatban azonban a tranzakciók általában más tranzakciókkal egyidejűleg konkurensen futnak, emiatt a helyességi elvet közvetlenül nem alkalmazhatjuk. Így olyan „ütemezéseket” kell tekintenünk, amelyek biztosítják, hogy ugyanazt az eredményt állítják elő, mintha a tranzakciókat egyesével hajtottuk volna végre. Az egész fejezet fő témáját adják azok a módszerek, amelyek biztosítják, hogy a tranzakciók csak olyan módon legyenek konkurensen végrehajtva, mintha sorban egyesével futottak volna le.
+Az ütemezés (schedule) egy vagy több tranzakció által végrehajtott lényeges műveletek időrendben vett sorozata. Amikor a konkurenciavezérlést tanulmányozzuk, a lényeges olvasási és írási műveletek a központi memória puffereiben történnek, nem pedig lemezen. Vagyis egy A adatbáziselemet, amelyet valamelyik T tranzakció hozott be a pufferbe, ebben a pufferben nemcsak a T tudja olvasni vagy írni, hanem más tranzakciók is hozzáférhetnek az A-hoz. Idézzük fel a 8.1.4. részből, hogy a READ (OLVASÁS) és a WRITE (ÍRÁS) műveletek először meghívnak egy INPUT utasítást, hogy az adatbáziselemet a lemezről betöltsék, ha még nincs a pufferben, egyébként pedig a READ és WRITE műveletek közvetlenül a pufferben hozzáférnek az elemhez. Ezért csupán a READ és WRITE műveletek és a sorrendjük számít, amikor a konkurenciával foglalkozunk, és az INPUT, illetve OUTPUT műveleteket figyelmen kívül fogjuk hagyni.
+	T1	T2	A	B
+		125	125
+	READ(A,s)		
+	s := s*2		
+	WRITE(A,s)	150	
+	READ(B,s)		
+	s := s*2		
+	WRITE(B,s)		150
+READ(A,t)			
+t := t+100			
+WRITE(A,t)		150	
+READ(B,t)			
+t := t+100			
+WRITE(B,t)			150
+9.4. ábra. Soros ütemezés, amelyben T2 megelőzi T1-t
+Azt mondjuk, hogy egy ütemezés soros (serial schedule), ha úgy épül fel a tranzakciós műveletekből, hogy először az egyik tranzakció összes műveletét tartalmazza
+De nem is a végeredmény a központi kérdés addig, amíg a konzisztenciát megőrizzük. Általában nem várjuk el, hogy az adatbázis végső állapota független legyen a tranzakciók sorrendjétől. 
+T1	T2	A	B
+		125	125
+READ(A,t)			
+t := t+100			
+WRITE(A,t)		125	
+READ(B,t)			
+t := t+100			
+WRITE(B,t)			125
+	READ(A,s)		
+	s := s*2		
+	WRITE(A,s)	250	
+	READ(B,s)		
+	s := s*2		
+	WRITE(B,s)		250
+9.3. ábra. Soros ütemezés, amelyben T1 megelőzi T2-t
+9.1.3. Sorba rendezhető ütemezések
+A tranzakciókra vonatkozó helyességi elv szerint minden soros ütemezés megőrzi az adatbázis-állapot konzisztenciáját. Vajon van-e más ütemezés is, amely szintén biztosítja a konzisztencia megmaradását? Igen, ilyen létezik, ahogyan ezt a következő példa mutatja. Általában azt mondjuk, hogy egy ütemezés sorba rendezhető (serializable schedule), ha ugyanolyan hatással van az adatbázis állapotára, mint valamelyik soros ütemezés, függetlenül attól, hogy mi volt az adatbázis kezdeti állapota.
+T1	T2	A	B
+		125	125
+READ(A,t)			
+t := t+100			
+WRITE(A,t)		125	
+	READ(A,s)		
+	s := s*2		
+	WRITE(A,s)	250	
+READ(B,t)			
+t := t+100			
+WRITE(B,t)			125
+	READ(B,s)		
+	s := s*2		
+	WRITE(B,s)		250
+9.5. ábra. Sorba rendezhető, de nem soros ütemezés
+T1	T2	A	B
+		125	125
+READ(A,t)			
+t := t+100			
+WRITE(A,t)		125	
+	READ(A,s)		
+	s := s*2		
+	WRITE(A,s)	250	
+	READ(B,s)		
+	s := s*2		
+	WRITE(B,s)		150
+READ(B,t)			
+t := t+100			
+WRITE(B,t)			150
+9.6. ábra. Nem sorba rendezhető ütemezés
+Sajnos, az ütemező számára nem reális a tranzakciós számítások részleteinek figyelembevétele. Mivel a tranzakciók gyakran tartalmaznak általános célú programozási nyelven írt kódokat 
+	T1	T2	A	B
+		125	125
+READ(A,t)			
+t := t+100			
+WRITE(A,t)		125	
+	READ(A,s)		
+	s := s*1		
+	WRITE(A,s)	125	
+	READ(B,s)		
+	s := s*1		
+	WRITE(B,s)		125
+READ(B,t)			
+t := t+100			
+WRITE(B,t)			125
+9.7. ábra. Egy olyan ütemezés, amely csak a tranzakciók
+részletezett viselkedése miatt sorba rendezhető
+9.5. példa: A 9.2. ábrán látható tranzakciók az alábbi módon írhatók fel:
+T1: r1(A); w1(A); r1(B); w1(B);
+T2: r2(A); w2(A); r2(B); w2(B);
+Megjegyezzük, hogy nem említettük sehol a t és az s helyi változókat, és nem jelöltük azt sem, hogy mi történt a beolvasás után az A-val és B-vel. Intuíció alapján ezt úgy értelmezzük, hogy az adatbáziselemek megváltozásában a „legrosszabbat fogjuk feltételezni”.
+Egy másik példaként nézzük meg a T1 és T2-nek a 9.5. ábrán látható sorba rendezhető ütemezését. Ezt az ütemezést átírva:
+r1(A); w1(A); r2(A); w2(A); r1(B); w1(B); r2(B); w2(B);
+
+Pontosítva a jelölést:
+1.	Egy tranzakció műveletét (action of transaction) ri(X) vagy wi(X) formában fejezünk ki, amely azt jelenti, hogy a Ti tranzakció olvassa (read), illetve írja (write) az X adatbáziselemet.
+2.	Egy Ti tranzakció az i indexű műveletekből álló sorozat.
+3.	A T tranzakciók halmazának egy S ütemezése olyan műveletek sorozata, amelyben minden T halmazbeli Ti tranzakcióra teljesül, hogy Ti műveletei ugyanabban a sorrendben fordulnak elő az S-ben, mint ahogy magában a Ti definíciójában szerepeltek. Azt mondjuk, hogy az S az őt alkotó tranzakciók műveleteinek átlapolása (interleaving).
+<hr>
+9.2. Konfliktus sorbarendezhetőség
+Azzal kezdjük, hogy vegyük észre a legtöbb műveletpár nincs konfliktusban a fenti értelemben. Ugyanis, tételezzük fel, hogy Ti és Tj különböző tranzakciók, vagyis i  j.
+1.	ri(X); rj(Y) sohasem konfliktus, még akkor sem, ha X = Y. Ennek az az oka, hogy egyik lépés sem változtatja meg az értékeket.
+2.	ri(X); wj(Y) nincs konfliktusban, feltéve, ha X  Y. Ennek az az oka, hogy a Tj írhatja az Y-t, mielőtt a Ti beolvasta az X-et, az X értéke ugyanis ettől nem változik. Annak sincs hatása a Tj-re, hogy a Ti olvassa az X-et, ugyanis ez nincs hatással arra, hogy milyen értéket ír be a Tj az Y-ba.
+3.	wi(X); rj(Y) nincs konfliktusban, ha X  Y, ugyanazért, mint a 2.
+4.	Szintén hasonlóan wi(X); wj(Y) sincs konfliktusban mindaddig, amíg X  Y.
+
+Másrészt három esetben nem cserélhetjük fel a műveletek sorrendjét:
+a)	Ugyanannak a tranzakciónak két művelete, pl. ri(X); wi(Y) konfliktus. Ennek az az oka, hogy egyetlen tranzakción belül a műveletek sorrendje rögzített, és az adatbázis-kezelő rendszer ezt a sorrendet nem rendezheti át újra.
+b)	Különböző tranzakciók ugyanarra az adatbáziselemre való írása konfliktus. Vagyis wi(X); wj(X) konfliktus. Ennek az az oka, mint már írtuk, hogy az X értéke az marad, amelyet a Tj számolt ki. Ha felcseréljük a sorrendjüket, hogy wj(X); wi(X), akkor az X-nek a Ti által kiszámított értéke marad meg. Az a feltevésünk, hogy „nincs egybeesés”, azt adja, hogy a Ti és a Tj által írt értékek lehetnek különbözőek, és ezért az adatbázis valamelyik kezdeti állapotára különbözni fognak.
+c)	Különböző tranzakcióknak ugyanabból az adatbáziselemből való olvasása és írása is konfliktus. Vagyis ri(X); wj(X) konfliktus, és wi(X); rj(X) is konfliktus. Ha átvisszük wj(X)-et ri(X) elé, akkor a Ti által olvasott X-beli érték az lesz, amelyet a Tj írt, amiről pedig feltételeztük, hogy nem szükségképpen egyezik meg az X korábbi értékével. Tehát ri(X) és wj(X) sorrendjének cseréje befolyásolja, hogy Ti milyen értéket olvas X-ből, ez pedig befolyásolja a Ti működését.
+Azt mondjuk, hogy két ütemezés konfliktus ekvivalens (conflict-equivalent), ha szomszédos műveletek nem konfliktusos cseréinek sorozatával az egyiket átalakíthatjuk a másikká. Azt mondjuk, hogy egy ütemezés konfliktus sorbarendezhető (conflict-serializable schedule), ha konfliktus ekvivalens valamely soros ütemezéssel. Megjegyezzük, hogy a konfliktus sorbarendezhetőség 
+9.6. példa: Legyen az ütemezés
+r1(A); w1(A); r2(A); w2(A); r1(B); w1(B); r2(B); w2(B);
+a 9.5. példából. Azt állítjuk, hogy ez az ütemezés konfliktus sorbarendezhető. A 9.8. ábrán látható a cserék sorozata, amellyel ez az ütemezés átalakítható a (T1, T2) soros ütemezéssé, ahol az összes T1-beli művelet megelőzi az összes T2-beli műveletet. Aláhúztuk azokat a szomszédos műveletpárokat, amelyeket felcserélünk az egyes lépésekben. 
+r1(A); w1(A); r2(A); w2(A); r1(B); w1(B); r2(B); w2(B);
+r1(A); w1(A); r2(A); r1(B); w2(A); w1(B); r2(B); w2(B);
+r1(A); w1(A); r1(B); r2(A); w2(A); w1(B); r2(B); w2(B);
+r1(A); w1(A); r1(B); r2(A); w1(B); w2(A); r2(B); w2(B);
+r1(A); w1(A); r1(B); w1(B); r2(A); w2(A); r2(B); w2(B);
+9.8. ábra. Egy konfliktus sorbarendezhető ütemezés szomszédos műveletek felcserélésével való átalakítása soros ütemezéssé
+9.7. példa: A következő S ütemezés a T1, T2, T3 három tranzakciót tartalmazza:
+S: r2(A); r1(B); w2(A); r3(A); w1(B); w3(A); r2(B); w2(B);
+Ha az A-val kapcsolatos műveleteket nézzük meg, akkor több okot találunk, hogy miért igaz a T2 <S T3. Például r2(A) az S-ben w3(A) előtt áll, és w2(A) az r3(A) és a w3(A) előtt is áll. A három észrevételünk közül bármelyik elegendő, hogy igazoljuk, valóban vezet él a 2-ből 3-ba a 9.9. ábrán szereplő megelőzési gráfban.
+9.8. példa: A 9.9. ábra megelőzési gráfja körmentes, így a 9.7. példa S ütemezése konfliktus-sorbarendezhető. A csomópontoknak, azaz a tranzakcióknak csak egyetlen sorrendje van, amely konzisztens a gráf éleivel, és ez: (T1, T2, T3). Megjegyezzük, hogy az S-et valóban át lehet alakítani olyan ütemezéssé, amelyben a három tranzakció mindegyikének az összes művelete ugyanebben a sorrendben van, és ez a soros ütemezés:
+Miért nem szükséges konfliktus sorbarendezhetőség a sorbarendezhetőséghez?
+Egy példát már láttunk a 9.7. ábrán. Akkor megnéztük, hogy a T2 által végrehajtott speciális számítások miatt hogyan vált az ütemezés sorba rendezhetővé. Pedig a 9.7. ábra ütemezése nem konfliktus sorbarendezhető, ugyanis az A-t T1 írja előbb, a B-t pedig a T2. Mivel sem az A írását, sem a B írását nem lehet átrendezni, semmilyen módon nem kerülhet T1 összes művelete a T2 összes művelete elé, sem fordítva.
+Azonban vannak olyan sorba rendezhető, de nem konfliktus sorbarendezhető ütemezések is, amelyek nem függnek a tranzakciók által végrehajtott számításoktól. Például tekintsük a T1, T2, és T3 három tranzakciót, amelyek mindegyike X értékét írja. A T1 és T2 az Y-nak is ír értéket, mielőtt az X-nek írnának értéket. Az egyik lehetséges ütemezés, amely itt éppen soros is, a következő:
+S1: w1(Y); w1(X); w2(Y); w2(X); w3(X).
+Az S1 ütemezés X értékének a T3 által írt értéket, Y értékének pedig a T2 által írt értéket adja. Ugyanezt végzi a következő ütemezés is:
+S2: w1(Y); w2(Y); w2(X); w1(X); w3(X).
+Intuíció alapján átgondolva annak, hogy a T1 és a T2 milyen értéket ír az X-be, nincs hatása, ugyanis a T3 felülírja az értékeket. Emiatt S1 és S2 az X-nek is és az Y-nak is ugyanazt az értéket adja. Mivel az S1 soros, és az S2-nek bármely adatbázis-állapotra ugyanaz a hatása, mint az S1-nek, tehát S2 sorba rendezhető. Ugyanakkor mivel nem tudjuk felcserélni w1(Y)-t w2(Y)-nal, és nem tudjuk felcserélni w1(X)-et w2(X)-szel, így cseréken keresztül nem lehet az S2-t valamelyik soros ütemezéssé átalakítani. Tehát S2 sorba rendezhető, de nem konfliktus sorbarendezhető.
+S: r1(B); w1(B); r2(A); w2(A); r2(B); w2(B); r3(A); w3(A);
+9.9. példa: Tekintsük az alábbi ütemezést:
+S1: r2(A); r1(B); w2(A); r2(B); r3(A); w1(B); w3(A); w2(B);
+amely csak abban különbözik az S-től, hogy az r2(B) művelet három hellyel előbb szerepel. Az A-ra vonatkozó műveleteket megvizsgálva most is csak a T2 <S1 T3 megelőzési kapcsolathoz jutunk. De, ha a B-t vizsgáljuk, akkor nemcsak T1 < S1 T2 teljesül (ugyanis r1(B) és w1(B) a w2(B) előtt szerepel), hanem T2 < S1 T1 is (ugyanis r2(B) a w1(B) előtt fordul elő). Emiatt az S1 ütemezéshez tartozó megelőzési gráf az, amely a 9.10. ábrán látható.
+
+</body>
+</html>
